@@ -4,7 +4,7 @@ const firestore = new Firestore({
   projectId: PROJECTID,
 });
 
-exports.updateAppointmentDate = async (req, res) => {
+exports.updateAppointmentTime = async (req, res) => {
   try {
     console.log('Dialogflow Request body:', JSON.stringify(req.body));
 
@@ -13,6 +13,9 @@ exports.updateAppointmentDate = async (req, res) => {
 
     const accountID = req.body.sessionInfo.parameters.account_id;
     console.log('Account ID fetched:', accountID);
+
+    const newAppointmentTime = req.body.sessionInfo.parameters.new_appointment_time;
+    console.log('New Appointment Time:', newAppointmentTime);
 
     // Validate inputs
     if (!accountID) {
@@ -30,37 +33,45 @@ if (tag === 'appointment-reschedule') {
     console.log('Processing appointment reschedule');
 
     // Reference to the Firestore collection
-    const collectionRef = firestore.collection('UserInfo').doc(accountID);
+    const userDocRef = firestore.collection('UserInfo').doc(accountID);
 
     // Fetch the document
-    const userDoc = await userRef.get();
+    const userDoc = await userDocRef.get();
 
-    // Log the document details
-    console.log('Fetched document:', userDoc);
+    if (!userDoc.exists) {
+        console.log('User not found');
+        return res.status(404).send({
+          fulfillmentResponse: {
+            messages: [
+              { text: { text: ['User not found. Please check the account ID and try again.'] } },
+            ],
+          },
+        });
+      }
 
-    // Query Firestore for the document based on account_ID
-    const snapshot = await collectionRef.where('account_ID', '==', account_ID).get();
+      console.log('User found. Updating appointment time.');
 
-    if (snapshot.empty) {
-      return res.status(404).send({ error: "User not found" });
+      await userDocRef.update({ appointment_time: newAppointmentTime });
+
+      console.log('Appointment date updated successfully');
+      return res.status(200).send({
+        fulfillmentResponse: {
+          messages: [
+            { text: { text: ['Your appointment has been rescheduled successfully.'] } },
+          ],
+        },
+      });
     }
-
-    // Update the appointment_time field for the matched document(s)
-    let updateTime = [];
-    snapshot.forEach((doc) => {
-      updateTime.push(
-        doc.ref.update({ appointment_time: newAppointmentDate })
-      );
+    console.log('Invalid tag received');
+    return res.status(400).send({
+      fulfillmentResponse: {
+        messages: [
+          { text: { text: ['Invalid operation. Please try again.'] } },
+        ],
+      },
     });
-
-    await Promise.all(updateTime);
-
-    return res.status(200).send({
-      message: "Appointment date updated successfully",
-      updatedDate: newAppointmentDate,
-    });
-} catch (error) {
-    console.error('Error handling request:', error.message);
+  } catch (error) {
+    console.error('Error updating appointment date:', error);
     return res.status(500).send({
       fulfillmentResponse: {
         messages: [
